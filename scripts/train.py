@@ -18,7 +18,7 @@ from rdkit.Chem import AllChem, rdMolDescriptors, MolFromSmiles
 from rdkit.Chem import RDKFingerprint
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, balanced_accuracy_score, \
     average_precision_score
-from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.model_selection import StratifiedGroupKFold, StratifiedShuffleSplit
 from tqdm import tqdm
 
 
@@ -199,9 +199,7 @@ FPS_FUNCS = {'2048-ECFP4': ECFP4(),
 # this is some very unoptimized code, but the pickled model is built around it so I left it as is
 # even if it lacks some efficiency and readability
 class Model:
-    def __init__(self, pooling: str):
-        self._pooling = pooling
-
+    def __init__(self):
         self._models = [[]]
         self._train_preds = []
         self._bayes = None
@@ -367,9 +365,9 @@ class Model:
                 train_data[key] = pickle.load(open(val, "rb"))
 
         if isinstance(binary_labels, str):
-            y = pickle.load(open(binary_labels, "rb"))
+            y = np.array(pickle.load(open(binary_labels, "rb")))
         else:
-            y = binary_labels
+            y = np.array(binary_labels)
 
         # load in cluster data
         if isinstance(clusters, str):
@@ -377,7 +375,7 @@ class Model:
 
         overall_res_ensemble = {
             "fit_time": [],
-            "score_time": [],
+            "pred_time": [],
             "precision": [],
             "recall": [],
             "balanced_accuracy": [],
@@ -387,18 +385,20 @@ class Model:
             "DivPlatePPV": []
         }
 
-        s = StratifiedGroupKFold(n_splits=3, shuffle=True)
+        s = StratifiedShuffleSplit(test_size=0.2)
 
-        for i, (train_idx, test_idx) in tqdm(enumerate(s.split(train_data[self._fp_func[0]], y, clusters)), desc="Doing Folds"):
+        for i, (train_idx, test_idx) in tqdm(enumerate(s.split(list(train_data.values())[0], y, clusters)), desc="Doing Folds"):
             y_train = y[train_idx]
             y_test = y[test_idx]
+
+            train_clusters = clusters[train_idx]
 
             mates = []
             all_train_preds = []
 
             t0 = time()
-            for _, x_train in train_data.items():
-                x_train = x_train[train_idx]
+            for _, x_train_ in train_data.items():
+                x_train = x_train_[train_idx]
                 if ensemble > 1:
                     # this is the ensemble builder
                     # should have done this so I could have reused the fit func but too late lol
@@ -406,7 +406,7 @@ class Model:
                     models = []
                     train_preds = []
 
-                    for ii, (train_idx2, test_idx2) in tqdm(enumerate(s2.split(x_train, y, clusters)), desc="Doing ensemble"):
+                    for ii, (train_idx2, test_idx2) in tqdm(enumerate(s2.split(x_train, y_train, train_clusters)), desc="Doing ensemble"):
                         clf = LGBMClassifier(n_estimators=150, n_jobs=-1)
                         x_train2 = x_train[train_idx2]
                         y_train2 = y_train[train_idx2]
@@ -434,7 +434,7 @@ class Model:
             pred_time = time() - t0
 
             preds = test_preds.mean(axis=1)
-            discrete_preds = (preds > 0.5).astype(int)
+            discrete_preds = (preds > 0.3).astype(int)
 
             ppv = precision_score(y_test, discrete_preds)
             recall = recall_score(y_test, discrete_preds)
