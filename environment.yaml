@@ -1,0 +1,8 @@
+name: SGC_DEL_ML_WDR91
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - -r requirements.txt
