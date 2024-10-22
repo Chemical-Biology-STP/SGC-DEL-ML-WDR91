@@ -53,7 +53,7 @@ def main():
     )
 
     # Model loading
-    model_path = "/Users/yipy/Documents/GitHub/SGC-DEL-ML-WDR91/models/WDR91_bECFP6_E5.pkl"
+    model_path = "models/WDR91_bECFP6_E5.pkl"
     model = load_model(model_path)
 
     # File upload section
